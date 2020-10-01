@@ -7,7 +7,7 @@ from igraph import *
 #Genetic parameters
 init_pop_size = 128
 init_genome_size = 1
-mutation_chance = 0.08
+mutation_chance = 0.20
 add_sub_edge_chance = 0.5
 change_edge_chance = 1 - add_sub_edge_chance
 
@@ -15,35 +15,44 @@ max_edge_id = 36
 
 class LaboratoryGUI():
 
-    def __init__(self, lab):
-        self.laboratory = lab
+    def __init__(self, graph):
+        #self.laboratory = lab
+        self.graph = graph
         self.width = 800
         self.height = 800
         self.screen = pygame.display.set_mode((self.width, self.height))
         self.bg_rect = pygame.Rect(0, 0, self.width, self.height)
-        self.base_graph = lab.graph.layout_kamada_kawai()
+        self.base_graph = graph.layout_kamada_kawai()
         self.base_graph.fit_into((0, 0, self.width, self.height))
         self.font = pygame.font.Font(pygame.font.match_font("Arial"), 12)
         self.base_graph.scale(0.9)
         self.edge_lines = self.generate_edge_lines()
         self.vertex_radius = 20
+        #self.choose_target_vertices()
+
+    def choose_target_vertices(self):
+        self.target = []
+
+        done = False
+
+        while(not done):
+            events = pygame.event.get()
+            for e in events:
+                if e.type == pygame.QUIT:
+                    running = False
 
     def generate_edge_lines(self):
         edges = []
-        for e in self.laboratory.graph.es:
+        for e in self.graph.es:
             start = [int(z) for z in self.base_graph.coords[e.source]]
             end = [int(z) for z in self.base_graph.coords[e.target]]
             print(e.source, e.target)
             edges.append([start, end])
         return edges
 
-    def update(self):
 
-        events = pygame.event.get()
-        for e in events:
-            if e.type == pygame.QUIT:
-                running = False
-
+    def draw_base_graph(self, target_vs=None, best=None):
+        e = pygame.event.get()
         pygame.draw.rect(self.screen, pygame.Color("#dddddd"), self.bg_rect)
 
         #Draw edges
@@ -51,35 +60,40 @@ class LaboratoryGUI():
             pygame.draw.line(self.screen, pygame.Color('#000000'), e[0], e[1], 1)
 
         #Draw best population member
-        best = self.laboratory.best_creature()
-        for g in best.genes:
-            edge = self.edge_lines[g]
-            pygame.draw.line(self.screen, [0, 245, 0], edge[0], edge[1], 6)
+        if(best):
+            for g in best.genes:
+                edge = self.edge_lines[g]
+                pygame.draw.line(self.screen, [0, 245, 0], edge[0], edge[1], 6)
 
         #Draw vertices
         for i, c in enumerate(self.base_graph.coords):
             color = [255, 0, 0]
-            if(i == self.laboratory.start or i == self.laboratory.end):
+            if(i in target_vs):
                 color = [0, 0, 255]
             pygame.draw.circle(self.screen, color, [int(z) for z in c], self.vertex_radius)
-
 
             id = self.font.render(str(i), True, [255, 255, 255], color)
             self.screen.blit(id, [int(z - 6) for z in c])
 
+    def update(self, target_vs, best):
+        self.draw_base_graph(target_vs=target_vs, best=best)
         pygame.display.flip()
 
 class Creature():
     def __init__(self, init_size=None, genome=None):
         self.genes = []
         if(genome):
-            self.genome = genome
+            unique = set()
             j = 0
-            for x in range(len(self.genome) // 2):
+            for x in range(len(genome) // 2):
                 end = (x+1)*2
-                gene = int(self.genome[j:end])
+                gene = (genome[j:end])
                 j = end
-                self.genes.append(gene)
+                if(gene not in unique):
+                    self.genes.append(int(gene))
+                    unique.add(gene)
+            self.genome = "".join(list(unique))
+
         else:
             self.genome = ""
             for x in range(init_size):
@@ -89,9 +103,6 @@ class Creature():
                     self.genes.append(eid)
                 else:
                     x -= 1
-
-
-
 
         self.size = len(self.genome) // 2
         self.fitness = -1
@@ -116,18 +127,13 @@ class Creature():
                 #Change existing edge
                 mutate_index = random.randint(0, len(self.genes)//2)
                 gene = int(self.genes[mutate_index])
-                #Current approach: decrement or increment gene.
-                #TODO: What about randomly changing?
-                direction = 1
-                if(random.random() < 0.5 or gene == max_edge_id):
-                    direction = -1
-                gene += direction
-                if(gene < 0):
-                    gene = 0
+                #Current approach: randomly select a new edge to mutate to
+                gene = random.randint(0, max_edge_id-1)
                 if(gene not in self.genes):
                     gene = "{:0>2d}".format(gene)
                     self.genome = self.genome[:2*(mutate_index)] + gene + self.genome[2*(mutate_index+1):]
                     self.genes[mutate_index] = int(gene)
+
         #Chance to mutate again
         if(random.random() <= 0.5):
             self.mutate()
@@ -186,18 +192,22 @@ class Laboratory():
 
         return connect_index
 
-
-
     def graph_from_gene_set(self, genes):
         edges = []
         for g in genes:
             s = self.graph.es[g].source
             t = self.graph.es[g].target
+            #print("edge", g, "s:", s, "t:", t)
             edges.append((s, t))
+
 
         genome_graph = Graph()
         genome_graph.add_vertices(19)
         genome_graph.add_edges(edges)
+        for v in genome_graph.vs:
+            v["id"] = v.index
+
+        genome_graph.vs.select(_degree=0).delete()
 
         return genome_graph
 
@@ -206,28 +216,23 @@ class Laboratory():
         #Identify if the genome has the start and end vertex connected to it.
         #Along the way, make sure every vertex that isn't the start or end has degree of 2 (connected inline with rest)
         has_start = False
-        has_end = True
+        has_end = False
 
         #for g in genes:
         for e in graph.es:
-            source = e.source_vertex
-            valid_source = ((source == self.start or source== self.end) and source.degree() == 1)
-            target = e.target_vertex
-            valid_target = ((target == self.end or target == self.start) and target.degree() == 1)
-            if(valid_source):
-                has_start =  True
-                if(target.degree != 1):
-                    return False
-            elif(valid_target):
-                has_end = True
-                if(source.degree() != 1):
-                    return False
-            else:
-                #Valid solution must have connected edges throughout! Much like the straight line solution in the fitness calculation.
-                if(source.degree() != 1 or target.degree() != 1):
-                    return False
+            try:
+                if(graph.vs.find(id=self.start)):
+                    has_start = True
+            except ValueError:
+                pass
+
+            try:
+                if(graph.vs.find(id=self.end)):
+                    has_end = True
+            except ValueError:
+                pass
+
         if(has_start and has_end):
-            print(genes, " is a solution.")
             return True
         return False
 
@@ -244,14 +249,18 @@ class Laboratory():
             start = False
             end = False
             for e in test_graph.es:
-                if(self.start in e.tuple):
+                if(self.start == e.source_vertex['id'] or self.start == e.target_vertex['id']):
                     start = True
-                    f += 40
+                    f += 20
                     fit_eval[0] = 'S' #Start
-                elif(self.end in e.tuple):
+                elif(self.end == e.source_vertex['id'] or self.start == e.target_vertex['id']):
                     end = True
-                    f += 40
+                    f += 20
                     fit_eval[1] = 'E' #End
+
+            #Subgraphs are utterly useless without at least a start or end in them.
+            if(start and end):
+                f += 100
 
             #Place a value on a "straight line" solution -- all edges are connected and non-looping
             #Another way to describe this situation is that given n vertices, the degree of 2 vertices is 1, and then n-2 vertices have degree 2
@@ -269,36 +278,48 @@ class Laboratory():
                     elif d > 2:
                         many_deg_ct += 1
 
-            #Another heuristic: misconnection of start/end
-            #No solution is going to have a start/end vertex with degree > 1
-            #Weight heavily negative to seriously push to not have this.
-            if(test_graph.vs[self.start].degree() > 1 or test_graph.vs[self.end].degree() > 1):
-                fit_eval[4] = 'M' #Misconnected
-                f -= 500
-
             #Is this a valid solution?
             if self.is_solution(test_graph):
-                f += 20 * 17 #Solution should be more favorable than any non-solution genome
-                #For solutions, shorter is better
                 fit_eval[3] = 'V'
-                f += int(1000 / len(genes))
+
+                #Base points for containing the solution nodes.
+                f += 100
+
+                #More points for no branches -- only two single-connected vertices.
+                if(single_deg_ct == 2):
+                    f += 100
+                else:
+                    f -= 300
+
+                start = test_graph.vs.find(id=self.start)
+                end = test_graph.vs.find(id=self.end)
+
+                #Encourage having the start and end of graph being targets
+                if(start.degree() == 1):
+                    f += 100
+                if(end.degree() == 1):
+                    f += 100
+
+                #For our nodes to be connected, there must be at least one path between them.
+                if(test_graph.vertex_disjoint_paths(source = start.index, target = end.index) != 0):
+                    #Encourage shorter paths in a connected solution
+                    f += (1000 / (len(genes) // 2))
+
             else:
                 fit_eval[3] = 'I'
-                #For non-solutions, longer is better -- we probably need to add more edges to find a solution
-                f += 5 * int((len(genes)//2))
 
-                #Without the increase in fitness depending on the number of connections in the solution, a 2-edge straight line is no better than a 3-edge straight line.
-                #And, while we're searching for a solution, longer lines will help us find a path. Usually.
-                if(single_deg_ct == 2):
-                    fit_eval[2] = 'L' #Line
-                    #f += 10 * double_deg_ct
-                    f += 20
-                else:
-                    fit_eval[2] = 'B' #Branching
+            if(single_deg_ct == 2):
+                fit_eval[2] = 'L' #Line
+            elif(single_deg_ct  < 2):
+                #Loops are sub-optimal!
+                f -= 200
+            else:
+                fit_eval[2] = 'B' #Branching
+                if(single_deg_ct > 2):
                     f -= 20 * single_deg_ct
 
-                    #Encourage nodes to not have many connections
-                    f -= 60 * many_deg_ct
+            #Encourage nodes to not have many connections
+            f -= 60 * many_deg_ct
 
             c.eval = "".join(fit_eval)
             c.fitness = f
@@ -380,12 +401,13 @@ def parse_graph(filename):
 pygame.init()
 graph = parse_graph("hw3_graph.txt")
 
+g = LaboratoryGUI(graph)
+
 start = int(input("Enter start node: "))
 end = int(input("Enter end node: "))
 print("Breeding population to find route from " + str(start) + " to " + str(end))
 
 l = Laboratory(graph, start, end)
-g = LaboratoryGUI(l)
 
 print(l.avgfitness)
 best_solution = [-500, -1]
@@ -395,7 +417,8 @@ for x in range(25000):
     if(best.fitness > best_solution[0]):
         best_solution[0] = best.fitness
         best_solution[1] = best.genome
-    print(int(l.avgfitness), best.fitness, best.genome, best.eval)
-    g.update()
+    print(x, int(l.avgfitness), best.fitness, best.genome, best.eval)
+    if(x % 10 == 0):
+        g.update([l.start, l.end], best)
 print("Best solution found: ", best_solution)
 g.update()
