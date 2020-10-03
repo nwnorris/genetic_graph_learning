@@ -7,11 +7,17 @@ from igraph import *
 #Genetic parameters
 init_pop_size = 128
 init_genome_size = 1
-mutation_chance = 0.20
+mutation_chance = 0.1
 add_sub_edge_chance = 0.5
 change_edge_chance = 1 - add_sub_edge_chance
-
 max_edge_id = 36
+
+#Colors
+color_bg = "#dddddd"
+color_v = "#7aadff"
+color_v_target = "#f5b5ea"
+color_v_hover = "#d687e0"
+color_line = "#ff8a7a"
 
 class LaboratoryGUI():
 
@@ -24,15 +30,14 @@ class LaboratoryGUI():
         self.bg_rect = pygame.Rect(0, 0, self.width, self.height)
         self.base_graph = graph.layout_kamada_kawai()
         self.base_graph.fit_into((0, 0, self.width, self.height))
-        self.font = pygame.font.Font(pygame.font.match_font("Arial"), 12)
+        self.font = pygame.font.Font(pygame.font.match_font("Arial"), 14)
         self.base_graph.scale(0.8)
         self.base_graph.translate((self.width * 0.2) / 2, (self.height * 0.2) / 2)
         self.edge_lines = self.generate_edge_lines()
         self.vertex_radius = 20
         self.graph_previous_ct = 100
         self.graph_previous = []
-        self.graph_rect = pygame.Rect(350, 20, self.graph_previous_ct, 50)
-        #self.choose_target_vertices()
+        self.graph_rect = pygame.Rect(self.width - (55 + self.graph_previous_ct), 20, self.graph_previous_ct, 50)
 
     def setLaboratory(self, laboratory):
         self.lab = laboratory
@@ -60,16 +65,20 @@ class LaboratoryGUI():
                 if e.type == pygame.QUIT:
                     done = True
                 if e.type == pygame.MOUSEBUTTONUP:
-                    if(hovered not in selected):
-                        selected.append(hovered)
-                    else:
-                        selected.remove(hovered)
+                    if(hovered != -1):
+                        if(hovered not in selected):
+                            selected.append(hovered)
+                        else:
+                            selected.remove(hovered)
                 if e.type == pygame.KEYDOWN:
                     if(e.key == 13 and len(selected) > 0): #Enter key
                         return selected
 
 
             self.draw_base_graph(target_vs = selected, outline = [hovered])
+            #Instructions
+            inst = self.font.render("Select 2 or more nodes, then press enter to begin genetic algorithm.", True, [0, 0, 0], pygame.Color("#dddddd"))
+            self.screen.blit(inst, [20, 20])
             pygame.display.flip()
 
     def generate_edge_lines(self):
@@ -77,12 +86,11 @@ class LaboratoryGUI():
         for e in self.graph.es:
             start = [int(z) for z in self.base_graph.coords[e.source]]
             end = [int(z) for z in self.base_graph.coords[e.target]]
-            print(e.source, e.target)
             edges.append([start, end])
         return edges
 
     def draw_base_graph(self, target_vs=None, best=None, outline=None):
-        pygame.draw.rect(self.screen, pygame.Color("#dddddd"), self.bg_rect)
+        pygame.draw.rect(self.screen, pygame.Color(color_bg), self.bg_rect)
 
         #Draw edges
         for e in self.edge_lines:
@@ -92,28 +100,30 @@ class LaboratoryGUI():
         if(best):
             for g in best.genes:
                 edge = self.edge_lines[g]
-                pygame.draw.line(self.screen, [0, 245, 0], edge[0], edge[1], 6)
+                pygame.draw.line(self.screen, pygame.Color(color_line), edge[0], edge[1], 6)
 
         #Draw vertices
         for i, c in enumerate(self.base_graph.coords):
-            color = [255, 0, 0]
+            color = pygame.Color(color_v)
             #Color target vertices
             if(target_vs and i in target_vs):
-                color = [0, 0, 255]
-            pygame.draw.circle(self.screen, color, [int(z) for z in c], self.vertex_radius)
+                color = pygame.Color(color_v_target)
+
             #Outline mouse-hovered vertices
             if(outline and i in outline):
-                pygame.draw.circle(self.screen, [255, 0, 255], [int(z) for z in c], int(self.vertex_radius * 1.2), 2)
+                pygame.draw.circle(self.screen, pygame.Color(color_v_hover), [int(z) for z in c], int(self.vertex_radius * 1.2))
+
+            pygame.draw.circle(self.screen, color, [int(z) for z in c], self.vertex_radius)
 
             id = self.font.render(str(i), True, [255, 255, 255], color)
-            self.screen.blit(id, [int(z - 6) for z in c])
+            self.screen.blit(id, [c[0] - int(id.get_width() / 2), c[1] - int(id.get_height() / 2)])
 
     def draw_info(self):
         font_color = [0, 0, 0]
-        gens = self.font.render("Generation " + str(self.lab.generations), True, font_color, pygame.Color("#dddddd"))
-        fit = self.font.render("Best fitness: " + str(self.lab.best.fitness), True, font_color, pygame.Color("#dddddd"))
-        edges = self.font.render("# Edges: " + str(len(self.lab.best.genome) // 2), True, font_color, pygame.Color("#dddddd"))
-        gen = self.font.render("Best genome: " + str(self.lab.best.genome), True, font_color, pygame.Color("#dddddd"))
+        gens = self.font.render("Generation " + str(self.lab.generations), True, font_color, pygame.Color(color_bg))
+        fit = self.font.render("Best fitness: " + str(self.lab.best.fitness), True, font_color, pygame.Color(color_bg))
+        edges = self.font.render("# Edges: " + str(len(self.lab.best.genome) // 2), True, font_color, pygame.Color(color_bg))
+        gen = self.font.render("Best genome: " + str(self.lab.best.genome), True, font_color, pygame.Color(color_bg))
         info  = [gens, fit, edges, gen]
         pos = [20, 20]
         for i in info:
@@ -133,9 +143,9 @@ class LaboratoryGUI():
                 pygame.draw.line(self.screen, pygame.Color("#383838"), [self.graph_rect.x + i, int(y1)], [self.graph_rect.x + (i + 1), int(y2)], 1)
 
                 if(i == len(self.graph_previous) - 2):
-                    xmax = self.font.render(str(self.lab.generations), True, [0, 0, 0], pygame.Color("#dddddd"))
+                    xmax = self.font.render(str(self.lab.generations), True, [0, 0, 0], pygame.Color(color_bg))
                     self.screen.blit(xmax, [self.graph_rect.x + i, self.graph_rect.y + self.graph_rect.height])
-                    fit_text = self.font.render(str(int(fit)), True, [0, 0, 0], pygame.Color("#dddddd"))
+                    fit_text = self.font.render(str(int(fit)), True, [0, 0, 0], pygame.Color(color_bg))
                     self.screen.blit(fit_text, [self.graph_rect.x - 23, int(y2)])
 
     def update(self, target_vs, best):
@@ -328,9 +338,9 @@ class Laboratory():
                 if(connected != 0):
                     f += 800
                     #More points for fewer edges
-                    f += (100 * len(self.graph.vs) / (len(test_graph.es)))
+                    f += (150 * len(self.graph.vs) / (len(test_graph.es)))
                     #For connected solutions, encourage no single-degree non-target vertices
-                    f -= 10 * single_deg_ct
+                    f -= 5 * single_deg_ct
                 else:
                     pass
 
