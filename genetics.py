@@ -25,21 +25,52 @@ class LaboratoryGUI():
         self.base_graph = graph.layout_kamada_kawai()
         self.base_graph.fit_into((0, 0, self.width, self.height))
         self.font = pygame.font.Font(pygame.font.match_font("Arial"), 12)
-        self.base_graph.scale(0.9)
+        self.base_graph.scale(0.8)
+        self.base_graph.translate((self.width * 0.2) / 2, (self.height * 0.2) / 2)
         self.edge_lines = self.generate_edge_lines()
         self.vertex_radius = 20
+        self.graph_previous_ct = 100
+        self.graph_previous = []
+        self.graph_rect = pygame.Rect(350, 20, self.graph_previous_ct, 50)
         #self.choose_target_vertices()
+
+    def setLaboratory(self, laboratory):
+        self.lab = laboratory
+
+    def get_hovered_vertex(self, mouse):
+        for i, c in enumerate(self.base_graph.coords):
+            dist = math.sqrt((mouse[0] - c[0])**2 + (mouse[1] - c[1])**2)
+            if(dist <= self.vertex_radius):
+                return i
+        return -1
 
     def choose_target_vertices(self):
         self.target = []
 
         done = False
+        selected = []
+        hovered = -1
 
         while(not done):
+            mouse = pygame.mouse.get_pos()
+            hovered = self.get_hovered_vertex(mouse)
+
             events = pygame.event.get()
             for e in events:
                 if e.type == pygame.QUIT:
-                    running = False
+                    done = True
+                if e.type == pygame.MOUSEBUTTONUP:
+                    if(hovered not in selected):
+                        selected.append(hovered)
+                    else:
+                        selected.remove(hovered)
+                if e.type == pygame.KEYDOWN:
+                    if(e.key == 13 and len(selected) > 0): #Enter key
+                        return selected
+
+
+            self.draw_base_graph(target_vs = selected, outline = [hovered])
+            pygame.display.flip()
 
     def generate_edge_lines(self):
         edges = []
@@ -50,9 +81,7 @@ class LaboratoryGUI():
             edges.append([start, end])
         return edges
 
-
-    def draw_base_graph(self, target_vs=None, best=None):
-        e = pygame.event.get()
+    def draw_base_graph(self, target_vs=None, best=None, outline=None):
         pygame.draw.rect(self.screen, pygame.Color("#dddddd"), self.bg_rect)
 
         #Draw edges
@@ -68,15 +97,51 @@ class LaboratoryGUI():
         #Draw vertices
         for i, c in enumerate(self.base_graph.coords):
             color = [255, 0, 0]
-            if(i in target_vs):
+            #Color target vertices
+            if(target_vs and i in target_vs):
                 color = [0, 0, 255]
             pygame.draw.circle(self.screen, color, [int(z) for z in c], self.vertex_radius)
+            #Outline mouse-hovered vertices
+            if(outline and i in outline):
+                pygame.draw.circle(self.screen, [255, 0, 255], [int(z) for z in c], int(self.vertex_radius * 1.2), 2)
 
             id = self.font.render(str(i), True, [255, 255, 255], color)
             self.screen.blit(id, [int(z - 6) for z in c])
 
+    def draw_info(self):
+        font_color = [0, 0, 0]
+        gens = self.font.render("Generation " + str(self.lab.generations), True, font_color, pygame.Color("#dddddd"))
+        fit = self.font.render("Best fitness: " + str(self.lab.best.fitness), True, font_color, pygame.Color("#dddddd"))
+        edges = self.font.render("# Edges: " + str(len(self.lab.best.genome) // 2), True, font_color, pygame.Color("#dddddd"))
+        gen = self.font.render("Best genome: " + str(self.lab.best.genome), True, font_color, pygame.Color("#dddddd"))
+        info  = [gens, fit, edges, gen]
+        pos = [20, 20]
+        for i in info:
+            self.screen.blit(i, pos)
+            pos[1] += 20
+
+    def graph_fitness(self, best):
+        self.graph_previous.append(best)
+        if(len(self.graph_previous) > self.graph_previous_ct):
+            self.graph_previous.pop(0)
+
+        pygame.draw.rect(self.screen, pygame.Color("#383838"), self.graph_rect, 1)
+        for i, fit in enumerate(self.graph_previous):
+            if(i < len(self.graph_previous) - 1):
+                y2 = self.graph_rect.y + self.graph_rect.height - (self.graph_previous[i+1] / 2200 * self.graph_rect.height)
+                y1 = self.graph_rect.y + self.graph_rect.height - (fit / 2200 * self.graph_rect.height)
+                pygame.draw.line(self.screen, pygame.Color("#383838"), [self.graph_rect.x + i, int(y1)], [self.graph_rect.x + (i + 1), int(y2)], 1)
+
+                if(i == len(self.graph_previous) - 2):
+                    xmax = self.font.render(str(self.lab.generations), True, [0, 0, 0], pygame.Color("#dddddd"))
+                    self.screen.blit(xmax, [self.graph_rect.x + i, self.graph_rect.y + self.graph_rect.height])
+                    fit_text = self.font.render(str(int(fit)), True, [0, 0, 0], pygame.Color("#dddddd"))
+                    self.screen.blit(fit_text, [self.graph_rect.x - 23, int(y2)])
+
     def update(self, target_vs, best):
         self.draw_base_graph(target_vs=target_vs, best=best)
+        self.draw_info()
+        self.graph_fitness(best.fitness)
         pygame.display.flip()
 
 class Creature():
@@ -159,14 +224,14 @@ class Creature():
         return [child1, child2]
 
 class Laboratory():
-    def __init__(self, graph, start, end):
+    def __init__(self, graph, target):
         self.graph = graph
-        self.start = start
-        self.end = end
+        self.target = target
         self.population = []
         self.fitness = [0] * init_pop_size
         self.avgfitness = -1
         self.last_avg_fitness = 0
+        self.generations = 0
         for i in range(init_pop_size):
             self.population.append(Creature(init_size=init_genome_size))
         self.calc_fitness()
@@ -211,115 +276,67 @@ class Laboratory():
 
         return genome_graph
 
+    #Return all target nodes that are within 'graph'
+    def target_vs_within(self, graph):
+        out = []
+        for v in graph.vs:
+            if(v.index in self.target):
+                out.append(v.index)
+        return out
+
     #A solution is a subset of the primary graph that connects the start and end vertices
     def is_solution(self, graph):
-        #Identify if the genome has the start and end vertex connected to it.
-        #Along the way, make sure every vertex that isn't the start or end has degree of 2 (connected inline with rest)
-        has_start = False
-        has_end = False
+        #Identify if the genome has the target vertices connected to it.
+        target_vs = self.target_vs_within(graph)
 
-        #for g in genes:
-        for e in graph.es:
-            try:
-                if(graph.vs.find(id=self.start)):
-                    has_start = True
-            except ValueError:
-                pass
-
-            try:
-                if(graph.vs.find(id=self.end)):
-                    has_end = True
-            except ValueError:
-                pass
-
-        if(has_start and has_end):
-            return True
-        return False
+        #Since there can be no duplicate nodes in the target set, we know this to be true:
+        return (len(target_vs) == len(self.target))
 
     def calc_fitness(self):
         avg = 0
         for index, c in enumerate(self.population):
             fit_eval = ['-'] * 5
             f = 0
-            j = 0
             genes = c.genes
             test_graph = self.graph_from_gene_set(c.genes)
 
-            #Check for connection to start/end
-            start = False
-            end = False
-            for e in test_graph.es:
-                if(self.start == e.source_vertex['id'] or self.start == e.target_vertex['id']):
-                    start = True
-                    f += 20
-                    fit_eval[0] = 'S' #Start
-                elif(self.end == e.source_vertex['id'] or self.start == e.target_vertex['id']):
-                    end = True
-                    f += 20
-                    fit_eval[1] = 'E' #End
 
-            #Subgraphs are utterly useless without at least a start or end in them.
-            if(start and end):
-                f += 100
-
-            #Place a value on a "straight line" solution -- all edges are connected and non-looping
-            #Another way to describe this situation is that given n vertices, the degree of 2 vertices is 1, and then n-2 vertices have degree 2
-            #We know this is true because for any graph, if any edge is "disconnected" from the rest, or connected in a branching capacity, there must be > 2 1-degree vertices
+            targets_within = []
             single_deg_ct = 0
-            double_deg_ct = 0
-            many_deg_ct = 0
-            for e in test_graph.es:
-                degs = [e.source_vertex.degree(), e.target_vertex.degree()]
-                for d in degs:
-                    if d == 1:
-                        single_deg_ct += 1
-                    elif d == 2:
-                        double_deg_ct += 1
-                    elif d > 2:
-                        many_deg_ct += 1
+            for v in test_graph.vs:
+                if(v['id'] in self.target):
+                    targets_within.append(v)
+                else:
+                    single_deg_ct += 1
+
+            target_ct = len(targets_within)
+            if(target_ct == 0):
+                #Solution is useless with no targets in it
+                f -= 500
+            else:
+                #More target vs within graph == better solution
+                f += 50 * target_ct
+
 
             #Is this a valid solution?
-            if self.is_solution(test_graph):
-                fit_eval[3] = 'V'
-
+            if len(targets_within) == len(self.target):
                 #Base points for containing the solution nodes.
                 f += 100
 
-                #More points for no branches -- only two single-connected vertices.
-                if(single_deg_ct == 2):
-                    f += 100
+                #More points for being connected
+                connected = test_graph.cohesion()
+                if(connected != 0):
+                    f += 800
+                    #More points for fewer edges
+                    f += (100 * len(self.graph.vs) / (len(test_graph.es)))
+                    #For connected solutions, encourage no single-degree non-target vertices
+                    f -= 10 * single_deg_ct
                 else:
-                    f -= 300
-
-                start = test_graph.vs.find(id=self.start)
-                end = test_graph.vs.find(id=self.end)
-
-                #Encourage having the start and end of graph being targets
-                if(start.degree() == 1):
-                    f += 100
-                if(end.degree() == 1):
-                    f += 100
-
-                #For our nodes to be connected, there must be at least one path between them.
-                if(test_graph.vertex_disjoint_paths(source = start.index, target = end.index) != 0):
-                    #Encourage shorter paths in a connected solution
-                    f += (1000 / (len(genes) // 2))
+                    pass
 
             else:
-                fit_eval[3] = 'I'
-
-            if(single_deg_ct == 2):
-                fit_eval[2] = 'L' #Line
-            elif(single_deg_ct  < 2):
-                #Loops are sub-optimal!
-                f -= 200
-            else:
-                fit_eval[2] = 'B' #Branching
-                if(single_deg_ct > 2):
-                    f -= 20 * single_deg_ct
-
-            #Encourage nodes to not have many connections
-            f -= 60 * many_deg_ct
+                #Not a solution -- encourage growth to find connection
+                f += 25 * len(test_graph.es)
 
             c.eval = "".join(fit_eval)
             c.fitness = f
@@ -387,6 +404,7 @@ class Laboratory():
         self.reproduce()
         self.calc_fitness()
         self.last_avg_fitness = self.avgfitness
+        self.generations += 1
 
 def parse_graph(filename):
     file = open(filename, "r").readlines()
@@ -402,23 +420,25 @@ pygame.init()
 graph = parse_graph("hw3_graph.txt")
 
 g = LaboratoryGUI(graph)
+target = g.choose_target_vertices()
+#target = [10, 14, 16, 18, 6, 5, 3, 4]
+print("Breeding population to find route including",  str(target))
 
-start = int(input("Enter start node: "))
-end = int(input("Enter end node: "))
-print("Breeding population to find route from " + str(start) + " to " + str(end))
+l = Laboratory(graph, target)
+g.setLaboratory(l)
 
-l = Laboratory(graph, start, end)
-
-print(l.avgfitness)
 best_solution = [-500, -1]
+
+running = True
 for x in range(25000):
     l.next_generation()
     best = l.best_creature()
     if(best.fitness > best_solution[0]):
         best_solution[0] = best.fitness
         best_solution[1] = best.genome
-    print(x, int(l.avgfitness), best.fitness, best.genome, best.eval)
+    #print(x, int(l.avgfitness), best.fitness, best.genome, best.eval)
     if(x % 10 == 0):
-        g.update([l.start, l.end], best)
+        e = pygame.event.get()
+        g.update(target, best)
 print("Best solution found: ", best_solution)
 g.update()
