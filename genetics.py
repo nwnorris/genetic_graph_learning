@@ -42,6 +42,7 @@ class LaboratoryGUI():
     def setLaboratory(self, laboratory):
         self.lab = laboratory
 
+    #Convert mouse coords to graph vertex, if applicable
     def get_hovered_vertex(self, mouse):
         for i, c in enumerate(self.base_graph.coords):
             dist = math.sqrt((mouse[0] - c[0])**2 + (mouse[1] - c[1])**2)
@@ -49,6 +50,7 @@ class LaboratoryGUI():
                 return i
         return -1
 
+    #Loop until user hits enter
     def choose_target_vertices(self):
         self.target = []
 
@@ -81,6 +83,7 @@ class LaboratoryGUI():
             self.screen.blit(inst, [20, 20])
             pygame.display.flip()
 
+    #Given graph layout, generate coordinates for each line
     def generate_edge_lines(self):
         edges = []
         for e in self.graph.es:
@@ -90,6 +93,7 @@ class LaboratoryGUI():
         return edges
 
     def draw_base_graph(self, target_vs=None, best=None, outline=None):
+        #Draw background
         pygame.draw.rect(self.screen, pygame.Color(color_bg), self.bg_rect)
 
         #Draw edges
@@ -118,6 +122,7 @@ class LaboratoryGUI():
             id = self.font.render(str(i), True, [255, 255, 255], color)
             self.screen.blit(id, [c[0] - int(id.get_width() / 2), c[1] - int(id.get_height() / 2)])
 
+    #Show algorithm info at top left
     def draw_info(self):
         font_color = [0, 0, 0]
         gens = self.font.render("Generation " + str(self.lab.generations), True, font_color, pygame.Color(color_bg))
@@ -130,6 +135,7 @@ class LaboratoryGUI():
             self.screen.blit(i, pos)
             pos[1] += 20
 
+    #Show recent fitness as a line graph
     def graph_fitness(self, best):
         self.graph_previous.append(best)
         if(len(self.graph_previous) > self.graph_previous_ct):
@@ -148,6 +154,7 @@ class LaboratoryGUI():
                     fit_text = self.font.render(str(int(fit)), True, [0, 0, 0], pygame.Color(color_bg))
                     self.screen.blit(fit_text, [self.graph_rect.x - 23, int(y2)])
 
+    #In-algorithm main rendering method
     def update(self, target_vs, best):
         self.draw_base_graph(target_vs=target_vs, best=best)
         self.draw_info()
@@ -157,6 +164,7 @@ class LaboratoryGUI():
 class Creature():
     def __init__(self, init_size=None, genome=None):
         self.genes = []
+        #Supplied genome, parse and set genes list
         if(genome):
             unique = set()
             j = 0
@@ -168,8 +176,8 @@ class Creature():
                     self.genes.append(int(gene))
                     unique.add(gene)
             self.genome = "".join(list(unique))
-
         else:
+            #No genome supplied, randomly generate genome
             self.genome = ""
             for x in range(init_size):
                 eid = math.floor(random.random() * max_edge_id)
@@ -181,7 +189,6 @@ class Creature():
 
         self.size = len(self.genome) // 2
         self.fitness = -1
-        self.eval = ""
 
     def mutate(self):
         if(random.random() <= mutation_chance):
@@ -202,7 +209,7 @@ class Creature():
                 #Change existing edge
                 mutate_index = random.randint(0, len(self.genes)//2)
                 gene = int(self.genes[mutate_index])
-                #Current approach: randomly select a new edge to mutate to
+                #Randomly select a new edge to mutate to
                 gene = random.randint(0, max_edge_id-1)
                 if(gene not in self.genes):
                     gene = "{:0>2d}".format(gene)
@@ -213,9 +220,8 @@ class Creature():
         if(random.random() <= 0.5):
             self.mutate()
 
+    #Combine parent genomes into children, with random crossover
     def mate(self, other, keep=None):
-
-        #print(len(self.genome), len(other.genome))
         crossover_point = 2 * random.randint(0, len(self.genome) // 2)
         child1_genome = self.genome[:crossover_point] + other.genome[crossover_point:]
         child2_genome = other.genome[:crossover_point] + self.genome[crossover_point:]
@@ -229,8 +235,6 @@ class Creature():
             if(keep[1]):
                 child2 = other
 
-        # print(self.genome, child1.genome)
-        # print(other.genome, child2.genome)
         return [child1, child2]
 
 class Laboratory():
@@ -238,7 +242,6 @@ class Laboratory():
         self.graph = graph
         self.target = target
         self.population = []
-        self.fitness = [0] * init_pop_size
         self.avgfitness = -1
         self.last_avg_fitness = 0
         self.generations = 0
@@ -246,27 +249,7 @@ class Laboratory():
             self.population.append(Creature(init_size=init_genome_size))
         self.calc_fitness()
 
-    def edge_touches_node(self, edge, target):
-        try:
-            return (target in self.graph.es[edge].tuple)
-        except IndexError:
-            print(edge)
-
-    def edges_connect_at(self, edge1, edge2, vertex):
-        try:
-            return (vertex in self.graph.es[edge1].tuple and vertex in self.graph.es[edge2].tuple)
-        except IndexError:
-            print(edge1, edge2)
-
-    def edges_connected(self, edge1, edge2):
-        connect_index = -1
-        if(self.edges_connect_at(edge1, edge2, self.graph.es[edge1].source)):
-            connect_index = self.graph.es[edge1].source
-        elif(self.edges_connect_at(edge1, edge1, self.graph.es[edge1].target)):
-            connect_index = self.graph.es[edge1].target
-
-        return connect_index
-
+    #Create a subgraph from this genome, while retaining vertex ID's from parent graph
     def graph_from_gene_set(self, genes):
         edges = []
         for g in genes:
@@ -305,28 +288,27 @@ class Laboratory():
     def calc_fitness(self):
         avg = 0
         for index, c in enumerate(self.population):
-            fit_eval = ['-'] * 5
             f = 0
             genes = c.genes
             test_graph = self.graph_from_gene_set(c.genes)
 
-
+            #Calculate relevant info about each vertex in solution
             targets_within = []
             single_deg_ct = 0
             for v in test_graph.vs:
                 if(v['id'] in self.target):
                     targets_within.append(v)
                 else:
-                    single_deg_ct += 1
-
+                    if(v.degree() == 1):
+                        single_deg_ct += 1
             target_ct = len(targets_within)
+
             if(target_ct == 0):
                 #Solution is useless with no targets in it
                 f -= 500
             else:
                 #More target vs within graph == better solution
                 f += 50 * target_ct
-
 
             #Is this a valid solution?
             if len(targets_within) == len(self.target):
@@ -341,30 +323,28 @@ class Laboratory():
                     f += (150 * len(self.graph.vs) / (len(test_graph.es)))
                     #For connected solutions, encourage no single-degree non-target vertices
                     f -= 5 * single_deg_ct
-                else:
-                    pass
 
             else:
                 #Not a solution -- encourage growth to find connection
                 f += 25 * len(test_graph.es)
 
-            c.eval = "".join(fit_eval)
             c.fitness = f
-            self.fitness[index] = f
             avg += f
         self.avgfitness = avg / len(self.population)
 
+    #Find most fit creature, and cache for later calls within this generation
     def best_creature(self):
-        #if(self.best == None):
-        best = -5000
-        best_i = -1
-        for i, c in enumerate(self.population):
-            if(c.fitness > best):
-                best = c.fitness
-                best_i = i
-        self.best = self.population[best_i]
+        if(self.best == None):
+            best = -5000
+            best_i = -1
+            for i, c in enumerate(self.population):
+                if(c.fitness > best):
+                    best = c.fitness
+                    best_i = i
+            self.best = self.population[best_i]
         return self.best
 
+    #Find worst creature within generation
     def worst_creature(self):
         worst = 99999
         worst_i = -1
@@ -406,9 +386,11 @@ class Laboratory():
 
         self.population = next_generation
 
+        #Mutation happens after reproduction
         for g in self.population:
             g.mutate()
 
+    #Main "loop"
     def next_generation(self):
         self.best = None
         self.reproduce()
@@ -416,6 +398,7 @@ class Laboratory():
         self.last_avg_fitness = self.avgfitness
         self.generations += 1
 
+#Driver function -- convert graph file to igraph
 def parse_graph(filename):
     file = open(filename, "r").readlines()
     #Split each line by space & convert to int
@@ -446,9 +429,9 @@ for x in range(25000):
     if(best.fitness > best_solution[0]):
         best_solution[0] = best.fitness
         best_solution[1] = best.genome
-    #print(x, int(l.avgfitness), best.fitness, best.genome, best.eval)
+    #Updating every generation would be too fast for GUI to handle
     if(x % 10 == 0):
         e = pygame.event.get()
         g.update(target, best)
-print("Best solution found: ", best_solution)
+
 g.update()
