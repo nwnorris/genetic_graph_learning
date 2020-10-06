@@ -5,9 +5,9 @@ import copy
 from igraph import *
 
 #Genetic parameters
-init_pop_size = 128
+init_pop_size = 256
 init_genome_size = 1
-mutation_chance = 0.1
+mutation_chance = 0.05
 add_sub_edge_chance = 0.5
 change_edge_chance = 1 - add_sub_edge_chance
 max_edge_id = 36
@@ -245,6 +245,7 @@ class Laboratory():
         self.avgfitness = -1
         self.last_avg_fitness = 0
         self.generations = 0
+        self.best = None
         for i in range(init_pop_size):
             self.population.append(Creature(init_size=init_genome_size))
         self.calc_fitness()
@@ -322,7 +323,7 @@ class Laboratory():
                     #More points for fewer edges
                     f += (150 * len(self.graph.vs) / (len(test_graph.es)))
                     #For connected solutions, encourage no single-degree non-target vertices
-                    f -= 5 * single_deg_ct
+                    f -= 15 * single_deg_ct
 
             else:
                 #Not a solution -- encourage growth to find connection
@@ -392,8 +393,8 @@ class Laboratory():
 
     #Main "loop"
     def next_generation(self):
-        self.best = None
         self.reproduce()
+        self.best = None
         self.calc_fitness()
         self.last_avg_fitness = self.avgfitness
         self.generations += 1
@@ -421,17 +422,26 @@ l = Laboratory(graph, target)
 g.setLaboratory(l)
 
 best_solution = [-500, -1]
-
+best_avg_100 = 0
+avg = 0
 running = True
-for x in range(25000):
+
+while(running):
     l.next_generation()
     best = l.best_creature()
     if(best.fitness > best_solution[0]):
         best_solution[0] = best.fitness
         best_solution[1] = best.genome
+    avg += best.fitness
     #Updating every generation would be too fast for GUI to handle
-    if(x % 10 == 0):
+    if(l.generations % 10 == 0):
         e = pygame.event.get()
         g.update(target, best)
+    if(l.generations % 100 == 0):
+        new_avg = avg / 100
+        if abs(new_avg - best_avg_100) < 5:
+            running = False
+        best_avg_100 = new_avg
 
-g.update()
+        avg = 0
+print("I think the best solution is", best.genome, "fitness:", best.fitness)
