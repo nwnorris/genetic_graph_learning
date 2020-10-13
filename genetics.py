@@ -79,6 +79,7 @@ class LaboratoryGUI():
 
 
             self.draw_base_graph(target_vs = selected, outline = [hovered])
+            self.draw_edge_numbers()
             #Instructions
             inst = self.font.render("Select 2 or more nodes, then press enter to begin genetic algorithm.", True, [0, 0, 0], pygame.Color("#dddddd"))
             self.screen.blit(inst, [20, 20])
@@ -99,14 +100,7 @@ class LaboratoryGUI():
 
         #Draw edges
         for i, e in enumerate(self.edge_lines):
-            id = self.font.render(str(i), True, [0, 0, 0], pygame.Color(color_bg))
-
             pygame.draw.line(self.screen, pygame.Color('#000000'), e[0], e[1], 1)
-            midpoint = [int((e[1][0] + e[0][0]) / 2), int((e[1][1] + e[0][1]) / 2)]
-            midpoint[0] -= int(id.get_width() / 2)
-            midpoint[1] -= int(id.get_height() / 2)
-            self.screen.blit(id, midpoint)
-
 
         #Draw best population member
         if(best):
@@ -128,7 +122,7 @@ class LaboratoryGUI():
             pygame.draw.circle(self.screen, color, [int(z) for z in c], self.vertex_radius)
 
             id = self.font.render(str(i), True, [255, 255, 255], color)
-            self.screen.blit(id, [c[0] - int(id.get_width() / 2), c[1] - int(id.get_height() / 2)])
+            self.screen.blit(id, [int(c[0] - int(id.get_width() / 2)), int(c[1] - int(id.get_height() / 2))])
 
     #Show algorithm info at top left
     def draw_info(self):
@@ -142,6 +136,15 @@ class LaboratoryGUI():
         for i in info:
             self.screen.blit(i, pos)
             pos[1] += 20
+
+    #Draw edge numbers at the midpoint of each edge
+    def draw_edge_numbers(self):
+        for i, e in enumerate(self.edge_lines):
+            id = self.font.render(str(i), True, [0, 0, 0], pygame.Color(color_bg))
+            midpoint = [int((e[1][0] + e[0][0]) / 2), int((e[1][1] + e[0][1]) / 2)]
+            midpoint[0] -= int(id.get_width() / 2)
+            midpoint[1] -= int(id.get_height() / 2)
+            self.screen.blit(id, midpoint)
 
     #Show recent fitness as a line graph
     def graph_fitness(self, best):
@@ -161,24 +164,26 @@ class LaboratoryGUI():
                     xmax = self.font.render(str(self.lab.generations), True, [0, 0, 0], pygame.Color(color_bg))
                     self.screen.blit(xmax, [self.graph_rect.x + i, self.graph_rect.y + self.graph_rect.height])
                     fit_text = self.font.render(str(int(fit)), True, [0, 0, 0], pygame.Color(color_bg))
-                    self.screen.blit(fit_text, [self.graph_rect.x - 23, int(y2)])
+                    self.screen.blit(fit_text, [self.graph_rect.x - 30, int(y2)])
 
     def draw_solution_text(self):
         f = pygame.font.Font(pygame.font.match_font("Arial"), 25)
         text = f.render("The laboratory has evolved this solution.", True, [0, 0, 0], pygame.Color(color_bg))
-        self.screen.blit(text, [self.width / 2 - text.get_width() / 2, 10])
+        self.screen.blit(text, [int(self.width / 2 - text.get_width() / 2), 10])
 
     #In-algorithm main rendering method
     def update(self, target_vs, best):
         self.draw_base_graph(target_vs=target_vs, best=best)
         self.draw_info()
         self.graph_fitness(best.fitness)
+        self.draw_edge_numbers()
         pygame.display.flip()
 
     def update_solution(self, target_vs, best):
         self.draw_base_graph(target_vs=target_vs, best=best)
         self.draw_info()
         self.graph_fitness(None)
+        self.draw_edge_numbers()
         self.draw_solution_text()
         pygame.display.flip()
 
