@@ -187,7 +187,7 @@ class LaboratoryGUI():
         self.draw_solution_text()
         pygame.display.flip()
 
-class Creature():
+class Individual():
     def __init__(self, init_size=None, genome=None):
         self.genes = []
         #Supplied genome, parse and set genes list
@@ -252,8 +252,8 @@ class Creature():
         child1_genome = self.genome[:crossover_point] + other.genome[crossover_point:]
         child2_genome = other.genome[:crossover_point] + self.genome[crossover_point:]
 
-        child1 = Creature(genome=child1_genome)
-        child2 = Creature(genome=child2_genome)
+        child1 = Individual(genome=child1_genome)
+        child2 = Individual(genome=child2_genome)
 
         if(keep):
             if(keep[0]):
@@ -273,7 +273,7 @@ class Laboratory():
         self.generations = 0
         self.best = None
         for i in range(init_pop_size):
-            self.population.append(Creature(init_size=init_genome_size))
+            self.population.append(Individual(init_size=init_genome_size))
         self.calc_fitness()
 
     #Create a subgraph from this genome, while retaining vertex ID's from parent graph
@@ -359,8 +359,8 @@ class Laboratory():
             avg += f
         self.avgfitness = avg / len(self.population)
 
-    #Find most fit creature, and cache for later calls within this generation
-    def best_creature(self):
+    #Find most fit Individual, and cache for later calls within this generation
+    def best_Individual(self):
         if(self.best == None):
             best = -5000
             best_i = -1
@@ -371,8 +371,8 @@ class Laboratory():
             self.best = self.population[best_i]
         return self.best
 
-    #Find worst creature within generation
-    def worst_creature(self):
+    #Find worst Individual within generation
+    def worst_Individual(self):
         worst = 99999
         worst_i = -1
         for i, c in enumerate(self.population):
@@ -382,19 +382,19 @@ class Laboratory():
         return i
 
     def best_fitness(self):
-        return self.best_creature().fitness
+        return self.best_Individual().fitness
 
     def reproduce(self):
         next_generation = []
-        #Kill worst 10% creatures
+        #Kill worst 10% Individuals
         for i in range(len(self.population) // 5):
-            index = self.worst_creature()
+            index = self.worst_Individual()
             self.population.pop(index)
 
-        #Pad up to max with best creatures
-        best = self.best_creature()
+        #Pad up to max with best Individuals
+        best = self.best_Individual()
         while(len(self.population) < init_pop_size):
-            copy = Creature(genome=best.genome)
+            copy = Individual(genome=best.genome)
             copy.fitness = best.fitness
             self.population.append(best)
 
@@ -458,7 +458,7 @@ mode = MODE_SEARCH
 while(running):
     if(mode == MODE_SEARCH):
         l.next_generation()
-        best = l.best_creature()
+        best = l.best_Individual()
         if(best.fitness > best_solution[0]):
             best_solution[0] = best.fitness
             best_solution[1] = best.genome
