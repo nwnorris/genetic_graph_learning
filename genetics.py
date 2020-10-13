@@ -19,6 +19,9 @@ color_v_target = "#f5b5ea"
 color_v_hover = "#d687e0"
 color_line = "#ff8a7a"
 
+#File name
+graph_file = 'hw3_graph.txt'
+
 class LaboratoryGUI():
 
     def __init__(self, graph):
@@ -319,7 +322,7 @@ class Laboratory():
             genes = c.genes
             test_graph = self.graph_from_gene_set(c.genes)
 
-            #Calculate relevant info about each vertex in solution
+            #Calculate how many targets are in the graph, and how many single-degree non-targe vertices are in the graph
             targets_within = []
             single_deg_ct = 0
             for v in test_graph.vs:
@@ -435,49 +438,88 @@ def parse_graph(filename):
     g.add_edges(result)
     return g
 
+def run_laboratory(graph, target, gui, mode, max_gen = None):
+
+    l = Laboratory(graph, target)
+    gui.setLaboratory(l)
+
+    running = True
+    best_solution = [-500, -1]
+    best_avg_100 = 0
+    sol = None
+    avg = 0
+
+    while(running):
+        if(mode == MODE_SEARCH):
+            l.next_generation()
+            best = l.best_Individual()
+            sol = best
+            if(best.fitness > best_solution[0]):
+                best_solution[0] = best.fitness
+                best_solution[1] = best.genome
+            avg += best.fitness
+            #Updating GUI every generation would be too fast for GUI to handle
+            if(l.generations % 10 == 0):
+                e = pygame.event.get()
+                gui.update(target, best)
+            if(l.generations % 100 == 0):
+                #Calculate running average
+                new_avg = avg / 100
+                if abs(new_avg - best_avg_100) < 1:
+                    sol = best
+                    if(not max_gen):
+                        mode = MODE_SOLUTION
+                best_avg_100 = new_avg
+                avg = 0
+            elif(max_gen):
+                if(l.generations >= max_gen):
+                    running = False
+        #Done, display solution to user
+        elif(mode == MODE_SOLUTION):
+            events = pygame.event.get()
+            for e in events:
+                if e.type == pygame.QUIT:
+                    running = False
+            gui.update_solution(target, best)
+    return sol
+
+def write_csv(data):
+    str_data = list(','.join(list(str(j) for j in k)) for k in data)
+    data = "\n".join(str_data)
+    name = 'genetic_exp_latest' + ".csv"
+    try:
+      with open(name, "w") as out:
+          out.write(data)
+          print('Saved experiment run to ' + name)
+    except Exception:
+      print("Unable to save to .csv")
 #---DRIVER---#
 
 pygame.init()
-graph = parse_graph("hw3_graph.txt")
+graph = parse_graph(graph_file)
 
-g = LaboratoryGUI(graph)
-target = g.choose_target_vertices()
-print("Breeding population to find route including",  str(target))
+gui = LaboratoryGUI(graph)
 
-l = Laboratory(graph, target)
-g.setLaboratory(l)
-
-best_solution = [-500, -1]
-best_avg_100 = 0
-sol = None
-avg = 0
-running = True
 MODE_SEARCH = 0
 MODE_SOLUTION = 1
 mode = MODE_SEARCH
-while(running):
-    if(mode == MODE_SEARCH):
-        l.next_generation()
-        best = l.best_Individual()
-        if(best.fitness > best_solution[0]):
-            best_solution[0] = best.fitness
-            best_solution[1] = best.genome
-        avg += best.fitness
-        #Updating every generation would be too fast for GUI to handle
-        if(l.generations % 10 == 0):
-            e = pygame.event.get()
-            g.update(target, best)
-        if(l.generations % 100 == 0):
-            new_avg = avg / 100
-            if abs(new_avg - best_avg_100) < 1:
-                sol = best
-                mode = MODE_SOLUTION
-            best_avg_100 = new_avg
+experimenting = True
 
-            avg = 0
-    elif(mode == MODE_SOLUTION):
-        events = pygame.event.get()
-        for e in events:
-            if e.type == pygame.QUIT:
-                running = False
-        g.update_solution(target, best)
+if(experimenting):
+    target = [10, 15, 2, 5, 9]
+    test_pop_size = [8, 32, 128, 256]
+    test_max_gen = [20, 100, 500]
+    test_mut_rate = [0.01, 0.05, 0.1, 0.25]
+    data = [["Pop Size", "Max Generation", "Mutation Rate", "Solution Fitness", "Solution Genome", "Solution Size"]]
+    for p in test_pop_size:
+        for g in test_max_gen:
+            for m in test_mut_rate:
+                init_pop_size = p
+                mutation_chance = m
+                solution = run_laboratory(graph, target, gui, mode, max_gen = g)
+                print("P:", p, "G:", g, "M:", m, "F:", str(int(solution.fitness)), "Gen:", solution.genome, "L:", str(len(solution.genome) // 2))
+                data.append([p, g, m, str(int(solution.fitness)), solution.genome, str(len(solution.genome) // 2)])
+    write_csv(data)
+else:
+    target = g.choose_target_vertices()
+    solution = run_laboratory(graph, target, g, mode)
