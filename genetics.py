@@ -27,10 +27,11 @@ class LaboratoryGUI():
         self.width = 800
         self.height = 800
         self.screen = pygame.display.set_mode((self.width, self.height))
+        pygame.display.set_caption("HW3 - nwnorris")
         self.bg_rect = pygame.Rect(0, 0, self.width, self.height)
         self.base_graph = graph.layout_kamada_kawai()
         self.base_graph.fit_into((0, 0, self.width, self.height))
-        self.font = pygame.font.Font(pygame.font.match_font("Arial"), 14)
+        self.font = pygame.font.Font(pygame.font.match_font("Arial"), 15)
         self.base_graph.scale(0.8)
         self.base_graph.translate((self.width * 0.2) / 2, (self.height * 0.2) / 2)
         self.edge_lines = self.generate_edge_lines()
@@ -97,8 +98,15 @@ class LaboratoryGUI():
         pygame.draw.rect(self.screen, pygame.Color(color_bg), self.bg_rect)
 
         #Draw edges
-        for e in self.edge_lines:
+        for i, e in enumerate(self.edge_lines):
+            id = self.font.render(str(i), True, [0, 0, 0], pygame.Color(color_bg))
+
             pygame.draw.line(self.screen, pygame.Color('#000000'), e[0], e[1], 1)
+            midpoint = [int((e[1][0] + e[0][0]) / 2), int((e[1][1] + e[0][1]) / 2)]
+            midpoint[0] -= int(id.get_width() / 2)
+            midpoint[1] -= int(id.get_height() / 2)
+            self.screen.blit(id, midpoint)
+
 
         #Draw best population member
         if(best):
@@ -137,9 +145,10 @@ class LaboratoryGUI():
 
     #Show recent fitness as a line graph
     def graph_fitness(self, best):
-        self.graph_previous.append(best)
-        if(len(self.graph_previous) > self.graph_previous_ct):
-            self.graph_previous.pop(0)
+        if(best != None):
+            self.graph_previous.append(best)
+            if(len(self.graph_previous) > self.graph_previous_ct):
+                self.graph_previous.pop(0)
 
         pygame.draw.rect(self.screen, pygame.Color("#383838"), self.graph_rect, 1)
         for i, fit in enumerate(self.graph_previous):
@@ -154,11 +163,23 @@ class LaboratoryGUI():
                     fit_text = self.font.render(str(int(fit)), True, [0, 0, 0], pygame.Color(color_bg))
                     self.screen.blit(fit_text, [self.graph_rect.x - 23, int(y2)])
 
+    def draw_solution_text(self):
+        f = pygame.font.Font(pygame.font.match_font("Arial"), 25)
+        text = f.render("The laboratory has evolved this solution.", True, [0, 0, 0], pygame.Color(color_bg))
+        self.screen.blit(text, [self.width / 2 - text.get_width() / 2, 10])
+
     #In-algorithm main rendering method
     def update(self, target_vs, best):
         self.draw_base_graph(target_vs=target_vs, best=best)
         self.draw_info()
         self.graph_fitness(best.fitness)
+        pygame.display.flip()
+
+    def update_solution(self, target_vs, best):
+        self.draw_base_graph(target_vs=target_vs, best=best)
+        self.draw_info()
+        self.graph_fitness(None)
+        self.draw_solution_text()
         pygame.display.flip()
 
 class Creature():
@@ -409,13 +430,13 @@ def parse_graph(filename):
     g.add_edges(result)
     return g
 
-#Driver code
+#---DRIVER---#
+
 pygame.init()
 graph = parse_graph("hw3_graph.txt")
 
 g = LaboratoryGUI(graph)
 target = g.choose_target_vertices()
-#target = [10, 14, 16, 18, 6, 5, 3, 4]
 print("Breeding population to find route including",  str(target))
 
 l = Laboratory(graph, target)
@@ -423,25 +444,35 @@ g.setLaboratory(l)
 
 best_solution = [-500, -1]
 best_avg_100 = 0
+sol = None
 avg = 0
 running = True
-
+MODE_SEARCH = 0
+MODE_SOLUTION = 1
+mode = MODE_SEARCH
 while(running):
-    l.next_generation()
-    best = l.best_creature()
-    if(best.fitness > best_solution[0]):
-        best_solution[0] = best.fitness
-        best_solution[1] = best.genome
-    avg += best.fitness
-    #Updating every generation would be too fast for GUI to handle
-    if(l.generations % 10 == 0):
-        e = pygame.event.get()
-        g.update(target, best)
-    if(l.generations % 100 == 0):
-        new_avg = avg / 100
-        if abs(new_avg - best_avg_100) < 5:
-            running = False
-        best_avg_100 = new_avg
+    if(mode == MODE_SEARCH):
+        l.next_generation()
+        best = l.best_creature()
+        if(best.fitness > best_solution[0]):
+            best_solution[0] = best.fitness
+            best_solution[1] = best.genome
+        avg += best.fitness
+        #Updating every generation would be too fast for GUI to handle
+        if(l.generations % 10 == 0):
+            e = pygame.event.get()
+            g.update(target, best)
+        if(l.generations % 100 == 0):
+            new_avg = avg / 100
+            if abs(new_avg - best_avg_100) < 1:
+                sol = best
+                mode = MODE_SOLUTION
+            best_avg_100 = new_avg
 
-        avg = 0
-print("I think the best solution is", best.genome, "fitness:", best.fitness)
+            avg = 0
+    elif(mode == MODE_SOLUTION):
+        events = pygame.event.get()
+        for e in events:
+            if e.type == pygame.QUIT:
+                running = False
+        g.update_solution(target, best)
