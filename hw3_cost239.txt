@@ -1,3 +1,5 @@
+// COST 239 Network Description File
+// Prof. Kim, Computer Science and Engineering, North Central College
 0 1
 0 2
 2 8

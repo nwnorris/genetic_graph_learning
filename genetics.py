@@ -5,9 +5,9 @@ import copy
 from igraph import *
 
 #Genetic parameters
-init_pop_size = 256
+init_pop_size = 128
 init_genome_size = 1
-mutation_chance = 0.05
+mutation_chance = 0.1
 add_sub_edge_chance = 0.5
 change_edge_chance = 1 - add_sub_edge_chance
 max_edge_id = 36
@@ -20,7 +20,7 @@ color_v_hover = "#d687e0"
 color_line = "#ff8a7a"
 
 #File name
-graph_file = 'hw3_graph.txt'
+graph_file = 'hw3_cost239.txt'
 
 class LaboratoryGUI():
 
@@ -431,6 +431,7 @@ class Laboratory():
 #Driver function -- convert graph file to igraph
 def parse_graph(filename):
     file = open(filename, "r").readlines()
+    file = file[2:]
     #Split each line by space & convert to int
     result =  list(map(lambda l: tuple(map(lambda i: int(i), l.split(" "))), file))
     g = Graph()
@@ -462,9 +463,9 @@ def run_laboratory(graph, target, gui, mode, max_gen = None):
             if(l.generations % 10 == 0):
                 e = pygame.event.get()
                 gui.update(target, best)
-            if(l.generations % 100 == 0):
+            if(l.generations % 300 == 0):
                 #Calculate running average
-                new_avg = avg / 100
+                new_avg = avg / 300
                 if abs(new_avg - best_avg_100) < 1:
                     sol = best
                     if(not max_gen):
@@ -503,7 +504,7 @@ gui = LaboratoryGUI(graph)
 MODE_SEARCH = 0
 MODE_SOLUTION = 1
 mode = MODE_SEARCH
-experimenting = True
+experimenting = False
 
 if(experimenting):
     target = [10, 15, 2, 5, 9]
@@ -521,5 +522,5 @@ if(experimenting):
                 data.append([p, g, m, str(int(solution.fitness)), solution.genome, str(len(solution.genome) // 2)])
     write_csv(data)
 else:
-    target = g.choose_target_vertices()
-    solution = run_laboratory(graph, target, g, mode)
+    target = gui.choose_target_vertices()
+    solution = run_laboratory(graph, target, gui, mode)
